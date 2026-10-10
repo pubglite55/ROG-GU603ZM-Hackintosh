@@ -212,7 +212,7 @@ EFI-GU603ZM-Sequoia-OC1.0.8/
 
 1. BIOS 设置：Above 4G Decoding / Resizable BAR 开启，VT-d 可关，Secure Boot 关闭，GPU 模式 Ultimate。
 2. 生成三码替换占位符 → 写盘 → 插 USB-A 口启动。
-3. 详细安装步骤、BIOS 设置、故障排查见 **《安装与调试指南.md》**。
+3. 详细安装步骤、BIOS 设置、故障排查见 **《[INSTALL.zh-CN.md](INSTALL.zh-CN.md)》**。
 4. 两份 config 均通过 ocvalidate 1.0.8 校验（0 error）。
 
 ---

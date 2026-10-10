@@ -1,5 +1,7 @@
 # 安装与调试指南 —— ROG 幻16 (GU603ZM) × macOS Sequoia 15 × NVIDIA 驱动
 
+[English](INSTALL.md) | **简体中文**
+
 > 配套文件：《README.md》（方案说明 / 配置详解 / 版本清单）
 > 本指南假设你从 **Windows 11** 起步（当前状态）。全程约需 1.5~3 小时（含下载时间）。
 

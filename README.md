@@ -212,7 +212,7 @@ Also **DSDT.aml** (full replacement, fixes Alder Lake conditional USB port decla
 
 1. BIOS: enable Above 4G Decoding / Resizable BAR, disable VT-d (optional), disable Secure Boot, GPU mode Ultimate.
 2. Generate triplets to replace placeholders → write to disk → boot from a USB-A port.
-3. Detailed install steps, BIOS settings, and troubleshooting: see **《安装与调试指南.md》** (Chinese).
+3. Detailed install steps, BIOS settings, and troubleshooting: see **[INSTALL.md](INSTALL.md)**.
 4. Both configs pass ocvalidate 1.0.8 (0 errors).
 
 ---
