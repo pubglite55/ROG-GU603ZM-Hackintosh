@@ -2,6 +2,8 @@
 
 [English](README.md) | **简体中文**
 
+> [📦 下载最新 EFI](https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/releases/latest) · [安装指南](INSTALL.zh-CN.md) · [更新日志](CHANGELOG.md) · [参与贡献](CONTRIBUTING.md)
+>
 > 更新日期：2026-10-10 ｜ OpenCore 1.0.8 ｜ 目标系统：**macOS Sequoia 15.x**
 > 依据 Dortania OpenCore-Install-Guide 与 sqlsec/Hackintosh（国光）规范构建，
 > 独显方案基于 [nullmoth/nvidia-macos-driver](https://github.com/nullmoth/nvidia-macos-driver)（macOS 15 专用社区 NVIDIA 驱动）。

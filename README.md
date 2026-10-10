@@ -2,6 +2,8 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
+> [📦 Download latest EFI](https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/releases/latest) · [Install guide](INSTALL.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
+>
 > Updated: 2026-10-10 ｜ OpenCore 1.0.8 ｜ Target OS: **macOS Sequoia 15.x**
 > Built following the Dortania OpenCore-Install-Guide and sqlsec/Hackintosh conventions.
 > dGPU solution is based on [nullmoth/nvidia-macos-driver](https://github.com/nullmoth/nvidia-macos-driver) (a community NVIDIA driver for macOS 15 only).
