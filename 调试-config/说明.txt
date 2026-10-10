@@ -1,0 +1,488 @@
+【EXITBS:START 卡死 —— 备用配置说明】
+=====================================
+
+现象：OpenCore 退出一瞬间（日志最后一行 [EB|LOG:EXITBS:START]）卡住，
+屏幕文字定格 —— 这是"内存映射类 quirk 与固件不匹配"，华硕机型高发。
+下面是 4 份备用 config（基于"安装阶段"正式配置，只改了 Booter 内存相关项），
+请按顺序逐个尝试，每次只换一个文件。
+
+  备用1  关闭 SetupVirtualMap                        ← 先试这个（最常见）
+  备用2  备用1 + 关闭 DevirtualiseMmio
+  备用3  备用2 + 关闭 ProtectMemoryRegions / ProtectUefiServices
+  备用4  关闭 SetupVirtualMap + 关闭 RebuildAppleMemoryMap + 关闭
+         SyncRuntimePermissions + 打开 EnableWriteUnprotector（固件无 MAT 方案）
+
+用法（前提：你用的是本包的 EFI，U 盘上 EFI 文件夹在可见分区里）：
+  1. 打开 U 盘 → EFI\OC\ → 把现有 config.plist 先复制一份改名 config.plist.bak
+  2. 把本文件夹里的"备用1"复制到 U 盘 EFI\OC\ 下，改名 config.plist（覆盖）
+  3. 重启，重进 OpenCore 选 macOS Base System 再试
+  4. 能过 → 继续安装，并把成功的是哪个编号告诉我（我会并入正式配置）
+     仍卡 → 依次换 备用2、备用3、备用4
+  5. 每次只替换 config.plist，不要动 Kexts / ACPI / Drivers 文件夹
+
+注意：
+- 判断"真卡死"：等 2~3 分钟无变化 + U 盘灯不闪 = 真卡死；若之后自己黑屏/重启，
+  把新的表现告诉我（可能是另一个环节）。
+- 如果你用的不是本包 EFI（例如 1401.exe 生成的盘）：这套文件不能直接混用，
+  改法见对话说明（在它的 config.plist 里把 <key>SetupVirtualMap</key> 后面的
+  <true/> 改成 <false/>，位置在 Booter > Quirks）。
+
+【进展记录（2026-10-10）】
+- 11:51 / 11:52 首测（SetupVirtualMap=开）：停在 EXITBS:START
+- 12:02 ~ 12:05 四次复测（SetupVirtualMap=关）：仍停在"交接内核"环节；
+  日志显示 OpenCore 与 Apple boot.efi 全流程正常（KC 正常加载、CSR 0x0A43 生效），
+  属内存映射类 quirk 组合仍不匹配 → 继续往下试
+- 当前已换入：备用2（SetupVirtualMap + DevirtualiseMmio 均关闭）
+- 计划顺序：备用2 → 备用3 → 备用4（每次把对应文件改名成 config.plist 覆盖即可）
+
+【进展记录（续）】
+- 12:16 第 2 级实测：仍在"交接内核"（EXITBS:START）处定格，与第 1 级同签名 → 第 2 级不够
+- 12:20 的日志是全空的 = 一次回 Windows 的启动记录（无 macOS 内容，正常现象）
+- 已换入第 3 级（= 本文件夹里的"备用3-再关内存保护"）→ 待测；再不行 → 备用4
+
+【关键附加实验：判断"真死机"还是"只是画面停住"】
+背景：这台机器还没装 NVIDIA 驱动，画面暂靠固件帧缓冲；如果内核其实在跑、只是画面没了，
+处理方向完全不同。请在第 3 级测试时顺手做：
+  1. 先插上网线（RJ45 口接路由器）再开机
+  2. 选 macOS 条目，屏幕定格后等 3~5 分钟
+  3. 观察：网口指示灯是否亮起/闪烁？机器是否发热、风扇是否明显转？
+     - 有反应 → 内核其实在跑（只是画面停住）→ 告诉我，我们换"显示方向"排查
+     - 完全无反应 → 真卡死 → 继续 quirk 梯队（备用4）
+
+【进展记录（续2）——重大发现！】（2026-10-10 12:30）
+- 12:25 第 3 级：同样定格（签名与前两级完全一致）
+- 12:28 检查 Windows 显示适配器发现：**内屏仍挂在 Intel 核显上（机器处于 Standard 混合模式，
+  并未切换 Ultimate）**！NVIDIA 只驱动了一个外接口。
+  → 三级 quirk 全部"无效"的主因高度指向此项：核显在 macOS 无驱动，
+    这个模式下 macOS 拿不到可用的显示输出，画面必然在交接时定格。
+- 行动：打开 Armoury Crate → GPU 模式 → 选 **Ultimate（极致）**（不是"优化/Optimized"）→ 重启
+  → 回 Windows 后确认内屏已由 RTX 3060 驱动 → 再启动同一个 macOS 条目测试
+- 判读：这次若屏幕不再定格（出现内核滚动文字/苹果进度）→ 方向正确，继续推进安装
+
+【进展记录（续3）】（2026-10-10 12:47）
+- ✅ 重启后验证：**Ultimate 已生效**——内屏与外接口的活动显示均挂到 RTX 3060，
+  Intel 核显不再驱动任何屏幕（此即 nullmoth 驱动方案的必要状态）
+- 下一步：保持当前配置（第 3 级）复测 macOS 启动；观察屏幕是否还在"交接内核"处定格
+  - 不再定格（黑一下 → 新文字滚动/苹果进度）= 突破，继续推进安装
+  - 仍定格 = 记录新日志，换 备用4（无MAT方案）再试
+
+【进展记录（续4）】（2026-10-10 13:00）
+- 切 Ultimate 后实测（12:49）：屏幕表现仍是"原样定格"→ 卡点与 GPU 模式无关（外观看）
+- 已换入：**第 4 级配置**（备用4 = 无MAT方案：再关 RebuildAppleMemoryMap +
+  SyncRuntimePermissions，开 EnableWriteUnprotector）
+- 已把 OpenCore 换成 **DEBUG 诊断版**（1.0.8）：
+  * 原版两个文件备份在本目录 `OpenCore-正式版备份/`（OpenCore-release.efi / BOOTx64-release.efi）
+  * 想还原：把这两个文件拷回 U 盘 EFI\OC\OpenCore.efi 和 EFI\BOOT\BOOTx64.efi 即可
+  * 作用：新日志会包含 OpenCore 内部信息（slide/内存映射等），屏幕也会多出细节文字
+- 本次测试请务必配合"存活性观察"（区分 内核真死 vs 仅画面停）：
+  1. 插网线（笔记本 RJ45 ↔ 通电的路由器/交换机）——先看清未启动时灯是灭的
+  2. 启动 macOS 条目，定格后等 3~5 分钟
+  3. 看：①网口灯是否亮/闪 ②机身发热/风扇 ③若方便接 HDMI 屏一起看
+  - 网口灯亮或机器明显"在干活" = 内核其实在跑（仅画面死）→ 换"显示方向"排查
+  - 毫无反应 = 内核真没起来 → 下一步备牌：BIOS 关 Resizable BAR、ProvideCustomSlide 等
+
+【进展记录（续5）——高概率病因：CPU 型号仿冒（CPUID spoof）】（13:30）
+- 比对发现：1401 为这台笔记本生成的配置里，Kernel > Emulate 带 "Cpuid1Data=55060A00"
+  （把 CPU 伪装成 Comet Lake / 10 代）；AutoEFI 的 12 代笔记本配置也带仿冒。
+  **我们此前的配置这一项是空的——这是目前最大的差异。**
+- 1401 引擎源码 policy.py 注释（针对他们验证过的真机）："没有 [Comet Lake CPUID 仿冒]
+  内核根本不会启动：hang at EXITBS:START"——与我们的卡点完全一致。
+- GitHub issue #46/#44 等为同类"交接死机"未解家族（含桌面机）。
+- 已生成两份新测试配置（本文件夹内）：
+  * 备用5-加CPU仿冒.plist   ← 当前已换上（= 原始配置 + Cpuid1Data/Mask）
+  * 备用6-仿冒+关ProvideCurrentCpuInfo.plist   ← 备用5 无效再试
+- 判读：过关 = 屏幕黑一下 → 出现新文字/苹果进度（同前）
+
+【进展记录（续6）——🎉 突破：内核成功启动！】（13:35）
+- 结果：加 CPU 仿冒后，内核成功启动！！屏幕出现大量内核日志（RestrictEvents 加载、
+  PCI 初始化、AppleACPICPU 开始枚举处理器……）——**"EXITBS 死机"问题已解决**！
+- 当前停留在：一批 ACPI 表加载报错之后、AppleACPICPU 阶段。
+  报错含 OEM 表（IgfxSsdt / AdlP_Rvp / OemNv2T 等）与我们自己的 SSDT-EC / SSDT-HPET，
+  部分提示 "_SB.PC00 / _SB.PC00.LPCB 命名空间找不到"。
+- 下一步（U 盘已备好，按顺序试，每次改名覆盖 config.plist）：
+  1) 备用6-仿冒+关ProvideCurrentCpuInfo.plist   ← 先试（与 1401 验证过的新 CPU 配置一致）
+  2) 备用7-再删XOSI改名.plist                 ← = 6 + 去掉 _OSI→XOSI 全局改名与 SSDT-XOSI
+  3) 备用8-XOSI只改DSDT.plist                 ← = 6 + 把 _OSI 改名限制在 DSDT 内
+- 判读：通过 ACPI/CPU 阶段后会继续滚动日志 → 最终目标 = 进入恢复/安装器界面
+
+
+================================================================
+【2026-10-10 13:55 重大更新 —— 备用9：CPU 整套栈 + DSDT 修复】
+================================================================
+本轮通过交叉分析（1401 引擎源码 policy.py/bootfix.py、OpCore-Simplify 上游、
+ACPICA 源码 tbxfload.c/nsload.c、照片逐行放大）确认了两个根因，并已全部修复：
+
+【根因 1：x86_validate_topology panic（14 threads but 20 registered from MADT）】
+ = Alder Lake 混合核缺完整 CPU 栈。1401 对 12 代的做法（已照抄）：
+   Cpuid1Data 仿冒(已有 55060A00…) + ProvideCurrentCpuInfo=true
+   + CpuTopologyRebuild.kext (v2.0.2) + boot-arg ctrsmt=full
+   + 3 条 "force HT enabled" 内核补丁（b00t0x patches_ht.plist，Sequoia 用 MinKernel=24.0.0 那条）
+
+【根因 2：DSDT 加载失败 → 整个命名空间被删除 → 10 表加载失败】
+ 报错链：ACPI Error: [\_SB.PC00.XHCI.RHUB.HS01] Namespace lookup failure
+        → (DSDT) table load failure → AcpiNsDeleteNamespaceByOwner 删除全部节点
+        → 之后所有引用 \_SB.PC00 的表全部失败（PC00/LPCB/XHCI 全丢）
+ 原理：固件用 If (CondRefOf (PU2C/PU3C)) 条件式创建 USB 端口设备（HS01-14/SS01-10）。
+       旧 ACPICA（Apple 20160930）不执行模块级条件代码，解析到后面的
+       If (CondRefOf (...HS01)) { Scope (...HS01) ...} 时端口不存在 → DSDT 失败。
+       （Windows/新 ACPICA 会执行条件、跳过不存在的分支，所以只有 macOS 中招。）
+ 修复：在字节层把 26 个"门卫 If"头（opcode+pkglen+条件）替换为等长 NoOp，使
+       USB 端口声明变为无条件 → 生成 DSDT.aml，config 里由 ACPI→Add 整体替换 DSDT
+       （OpenCore 官方语义：DSDT 标识的表 = 替换而非追加）。
+       26 处 = 外层 PU2C/PU3C 2 处 + HS01-14 内层 14 处 + SS01-10 内层 10 处；
+       改动共 259 字节（258 补丁 + 1 校验和），长度与其余结构不变，已用 iasl 反汇编复核。
+
+【本版（备用9）其余对齐 1401 验证配置的改动】
+ - Kernel.Quirks.DisableRtcChecksum = true
+ - Booter.Quirks.AllowRelocationBlock = true（防 STOP 0x16）
+ - Booter.Quirks.ProtectMemoryRegions = false
+ - BAR 保持安装期设置（ResizeAppleGpuBars=0 / ResizeGpuBars=-1，与 1401 一致）
+ - Kernel.Block 的 IONDRVSupport 保持 Enabled=false（安装期不排除，装完驱动再开）
+
+【校验】ocvalidate 1.0.8：No issues found ✓
+
+【下次启动观察点（至关重要）】
+ 1. ACPI 表统计行：不再是 "10 table load failures, 11 successful"，
+    应为 "N ACPI AML tables successfully acquired and loaded"（0 失败）
+ 2. AppleACPICPU 应继续打印多个 ProcessorId 并继续往下走
+ 3. 若出现 PS2Controller 相关 panic：下一步加 boot-arg ps2rst=0（1401 的修复规则）
+ 4. 若卡在 "PCI configuration end"：BAR 已是安装值，出现则该另有原因，回报
+
+【回滚】调试-config\config.plist.bak-备用6（或把 'DSDT.aml' 条目 Enabled 改 false）
+
+（备用7/备用8 已作废：XOSI 改名经核实无害——11 处 _OSI 全在方法体内，运行期才执行）
+
+
+================================================================
+【2026-10-10 13:58 —— 实测反馈 & DSDT v2（最后一个 ACPI 失败已修）】
+================================================================
+13:50 实测（备用9 + DSDT v1）结果 —— 两大修复全部生效：
+ ✔ ACPI：从“10 表失败”降到 “1 表失败、20 表成功”，DSDT 加载成功，级联消失
+ ✔ CPU ：拓扑 panic 消失；AppleACPICPU 连续注册 (0/1/2…)；
+         日志实锤：CTR v2.0.2 注入成功 / “force HT enabled for Sequoia” 替换 1 处 OK /
+         MSR 35h=0x00140014(20 线程) / XcpmCfgLock 等全套 OK / CSR 0x0A43 / EXITBS 正常交接
+ ⏳ 观察：照片中处理器枚举到 ProcessorId=2 之后的情况待确认（是否继续滚动待用户报告）
+
+最后一个失败（SSDT-HPET，AE_ALREADY_EXISTS on _CRS）根因与修复：
+ · 根因：OpenCore 的 ACPI→Patch 只作用于固件表，且发生在 ACPI→Add 之前
+   （Configuration.tex 原文：“Perform binary patches in ACPI tables before table addition”）
+   → 我们经 ACPI→Add 替换进去的 DSDT 收不到 config 里的三条改名
+   → DSDT 里 HPET 的 _STA/_CRS 未被改名 → SSDT-HPET 再定义 _CRS 时撞名 → 加载失败
+ · 修复：DSDT v2 —— 把三条改名直接烤进 DSDT 文件本身（与 config 补丁同参数）：
+   HPET _CRS→XCRS (1 处)、HPET _STA→XSTA (1 处)、_OSI→XOSI (11 处)；
+   门卫 26 处 NoOp 保留。总变化 272 字节；iasl 反汇编复核：XCRS×1 / XSTA×1 / XOSI×11、_OSI 残留 0。
+ · 新文件 md5: d5af0f28fee75385706ae41a06cadd73（U 盘 EFI/OC/ACPI/DSDT.aml 已更新，旧版为 57e3f23e72…）
+ · 重生成脚本：dsdt-fix/make_dsdt.py（可复现）
+
+下次启动预期：ACPI 行应为 “N ACPI AML tables successfully acquired and loaded”（0 失败）；
+若仍停在 AppleACPICPU 处理器行附近，报告具体行号/数量与等待时长，据此选下一组开关。
+================================================================
+
+
+================================================================
+【2026-10-10 14:05 —— 卡点转移：ProcessorId=2 卡死 → 备用10A/10B】
+================================================================
+用户实测：备用9 + DSDT v1 启动在 “AppleACPICPU: ProcessorId=2 ...” 之后卡死（无 panic、无新日志，静置无效）。
+分析：
+ · 拓扑 panic 已解决、ACPI 已基本修复，新卡点 = 处理器启动/注册阶段第 4 个 CPU 起不来（或时间相关并发冻结）。
+ · CpuTopologyRebuild 官方 README 自己标注两条稳定性问题：
+   “Current problems: May cause random boot failure with verbose (-v) boot”；
+   历史版本：“Changing the number of cores in cpuid info causes instability such as random boot failing”。
+ · 关键认识：CTR 只是性能优化件（重建 P/E 拓扑），不是启动必需；规范 12 代配置 = ProvideCurrentCpuInfo 单用即可启动。
+   （备用5 时代 CTR 三件套并不存在，那轮的卡点在更早处；两者的差异需要逐步隔离。）
+动作：
+ · 备用10A-无CTR规范12代配置.plist 已设为当前：禁用 CpuTopologyRebuild.kext + 移除 ctrsmt=full + 禁用 3 条 HT 补丁，
+   其余全部保持（含 DSDT v2、ProvideCurrentCpuInfo、Cpuid 仿冒、安装期 BAR）。ocvalidate 无问题。
+ · 备用10B-无CTR+cpus3.plist 已备好：= 10A + boot-arg cpus=3（用于区分“第 4 个 CPU 启动问题” vs “并发/时间相关冻结”）。
+ · 备用9（CTR 全套）备份在 调试-config\config.plist.bak-备用9v2。
+测试顺序建议：
+ 1) 直接重启测 10A：看 ACPI 行是否 0 失败（DSDT v2 应修掉 SSDT-HPET）+ AppleACPICPU 能滚多少行 / 后续出现什么。
+ 2) 若仍卡同样位置 → 换上 10B（cpus=3）再试：若 10B 能过 CPU 段 → 与第 4 个 CPU 启动有关；仍卡 → 并发/时间相关，
+    下一轮方向 = PCI/EC 方向排查。
+================================================================
+
+
+================================================================
+【2026-10-10 14:12 —— 卡点精确定位：第 4 个 CPU（LAPIC 9，SMT 兄弟）启动时卡死】
+================================================================
+照片逐像素放大复核（13:50 那次启动）：
+  AppleACPICPU: ProcessorId=0 LocalApicId=0 Enabled
+  AppleACPICPU: ProcessorId=1 LocalApicId=1 Enabled
+  AppleACPICPU: ProcessorId=2 LocalApicId=8 Enabled   ← 映射正确（真实 LAPIC 布局 0,1,8,9,16,17,…）
+  → 前三个 CPU 启动成功且 LAPIC 编号全对（0→0、1→1、2→8），卡在“第 4 个”（LAPIC 9 = LAPIC 8 的 SMT 兄弟线程）。
+排查结论：
+ · 曾怀疑“ACPI0007 的 _UID 顺序号（0..63）≠ 真实 LAPIC”导致启动到不存在的 LAPIC——经照片证实 LAPIC 值正确，该怀疑排除，DSDT 无需再改。
+ · （顺带记录：本机 DSDT 定义 64 个 PR00-PR63 处理器设备；MADT 只有 32 个条目（20 启用 + 12 禁用占位）。属于模板式定义，实际映射正确。）
+ · 现最大嫌疑 = “SMT 配对感知的 CPU 启动路径”卡在兄弟线程：CTR + force-HT 补丁让内核按“每核 2 线程”信念带起 CPU，正好在第 4 个（8 的兄弟 9）处挂住。
+行动（已就绪）：
+ · 当前 U 盘配置 = 备用10A（去掉 CTR kext / ctrsmt=full / 3 条 HT 补丁）→ 内核将视 20 个 CPU 为独立核（无兄弟配对），
+   预期可越过该卡点。直接重启测试。
+ · 若 10A 仍卡在相同位置（≈3 行）：换上 备用10B（=10A + cpus=3）——cpus=3 恰好只启动 0/1/8，不含第 4 个；
+   若 10B 能过 CPU 段 → 卡点确认为第 4 个 CPU 的启动，下一轮集中解决“兄弟线程启动”。
+ · 备注：若怀疑是“慢”而非“卡”，可先静置 10 分钟观察是否继续滚动。
+================================================================
+
+
+================================================================
+【2026-10-10 14:20 —— 卡点定位为 PCI 配置冲突：上 npci 参数（备用11/12）】
+================================================================
+10A 实测（照片+日志 141027）：
+ · ★ ACPI: “21 ACPI AML tables successfully acquired and loaded” —— 全部 21 张表 0 失败，
+   DSDT/SSDT 修复工程彻底完工（此前 10 失败 → 1 失败 → 0 失败）。
+ · 卡点仍在 ProcessorId=2/LAPIC 8 之后（去掉 CTR 三件套也没变化）→ 与 CTR 无关。
+ · 日志确认 10A 正确生效（无 CTR 注入、无 HT 补丁；MSR 35h 与 ProvideCurrentCpuInfo 正常）。
+根因判断（社区同症状 + 修复库一致）：
+ · 远景论坛有完全相同的记录：“引导内核卡在 AppleACPICPU:ProcessorId=xx … 是 Above 4G Decoding 环境下
+   的 PCI 内存分配冲突，加入 npci=0x3000（或 0x2000）后解决”。
+ · 1401 的 bootfix.py 修复库同样用 npci=0x2000 → npci=0x3000 阶梯；Dortania 对 500/600 系主板亦推荐。
+ · 本机 Above 4G=ON、ReBAR=ON（且驱动要求必须保持 ON），正是该冲突高发环境。
+行动：
+ · 备用11-npci2000.plist 已设为当前（boot-args 追加 npci=0x2000）。
+ · 备用12-npci3000.plist 已备在 调试-config（若 11 仍卡，换上再试）。
+ · ProvideConsoleGop=True 已确认（ASUS 聚合 GOP 黑屏问题已规避）。
+ · 备用10A 备份 = 调试-config\config.plist.bak-备用10A。
+观察点：过 ProcessorId 段后应继续滚动（PCI configuration / USB / …）；
+        最终目标 = 出现浅色“macOS 恢复/安装器”图形界面。
+================================================================
+
+
+================================================================
+【2026-10-10 14:24 —— npci=0x2000 不够，切 npci=0x3000（备用12）】
+================================================================
+实测：npci=0x2000 生效（pci flags 0xc3000 → 0xc1000）但卡点不变（ProcessorId=2/LAPIC 8 之后）。
+ · 卡点对 CTR 增删、npci=0x2000 均无反应且完全确定性 → 需继续换轴。
+动作：备用12（=10A + npci=0x3000）已设为当前；11 备份为 config.plist.bak-备用11-npci2000。
+下一步（若 12 仍卡）：备用10B（=10A + cpus=3）在 调试-config —— 直接探测“第 4 个 CPU 启动”假设；
+ · 若 cpus=3 能让机器跑起来（哪怕只有 3 核），优先目标 = 先把 macOS 装起来（CPU 数量问题后续在系统内修）。
+情报：已反编译固件 CpuSsdt（SSDT.aml，被认作 PR00-PR09+ 为 ProcessorObj，含 IETM/TCPU/Notify 逻辑）——未见对第 4 个 CPU 的特殊处理。
+================================================================
+
+
+================================================================
+【2026-10-10 14:26 —— 状态核对 + 备用13 + BIOS ReBAR 候选】
+================================================================
+· 用户提到的 opencore-2026-10-10-141730.txt 已不在 U 盘（当前根目录所有 opencore-*.txt 都被清理了）。
+  无碍：OpenCore 日志只写到 EB|LOG:EXITBS:START（交接点），卡死发生在交接之后，日志本来就看不到，
+  诊断信息全部来自屏幕照片。建议以后尽量保留 U 盘根目录的 opencore-*.txt（便于核对 OC 侧配置）。
+· U 盘完整性核对：当前 config = 备用12（npci=0x3000，md5 一致）；DSDT.aml = d5af0f28（v2）✓；CTR kext 在位（禁用）✓。
+  → 说明 npci=0x3000 尚未测试，下一步就是它。
+· 新增备用13-npci3000-无v.plist（=12 去掉 -v）：用于判断“系统是否其实活着、只是控制台输出停了”。
+· 新候选（暂缓）：BIOS 关闭 Resizable BAR（Above 4G 保持 ON）。来源：CSDN“Resizable BAR 导致黑苹果随机卡死”
+  一文（列出的卡点含 CPU 初始化 APPLEACPICPU；最稳妥方案=BIOS 关 ReBAR）。注意：驱动 README 建议 ReBAR ON
+  （性能），但 issue #35 说明 ReBAR OFF 也能用（只是显卡启动慢）；若前面几格都不通再动 BIOS。
+测试梯队（U 盘均已备好）：
+ 1) 备用12（npci=0x3000）← 现在测
+ 2) 备用10B（cpus=3）← 测“第 4 个 CPU”假设
+ 3) 备用13（无 -v）← 探“假死”
+ 4) BIOS 关 ReBAR（不动 config 或回 10A）
+================================================================
+
+
+【2026-10-10 14:30 补充】用户实测：本机 BIOS 改不了 Above 4G / ReBAR（ROG 笔记本常见，选项被隐藏或锁定）。
+ → BIOS 侧候选（关 ReBAR）作废；Above 4G 保持开启（驱动本来就需要它开着）。
+ → 测试梯队收敛为纯 config 侧：备用12（npci=0x3000）→ 备用10B（cpus=3）→ 备用13（无 -v）。
+
+
+================================================================
+【2026-10-10 14:40 ★★ 关键突破：定位“卡在第 3 行”的真正机制 → 备用14（UID 对齐 + APIC 替换）】
+================================================================
+三次启动（CTR 全套 / 去 CTR / npci=0x2000 / npci=0x3000）都精确卡在同一位置，且 npci 确实生效
+（pci flags 0xc3000 → 0xc1000 → 0xc0000）——说明卡点与 PCI 参数、CTR 均无关，是确定性机制。
+
+推演（照片+ACPI 数据拼合）：
+ · 打印：ProcessorId=0→LAPIC 0、1→LAPIC 1、2→LAPIC 8 —— 前两个“恰好正确”（UID 0/1 与真实 LAPIC 0/1 相同！）
+ · 真实 LAPIC 布局：0,1,8,9,16,17,24,25,32,33,40,41,48,50,52,54,56,58,60,62
+ · DSDT 里 PR00..PR63 的 _UID = 顺序号 0..63（不符合“_UID 应=APIC ID”的 ACPI 约定）
+ · 结论：显示值来自 MADT（正确），但启动 CPU 的目标地址用了 ACPI 对象的 _UID（顺序号）→
+   启动到第 3 个（UID=2）时目标 LAPIC 2 不存在 → 永远等不到应答 → 卡死在 2 之后。
+   （0、1 因巧合能过；从 2 开始必死——完美解释三次启动的“纹丝不动的第 3 行”。）
+
+修复（备用14 = 10A 基线 + 双保险，均已上盘并 ocvalidate 通过）：
+ ① DSDT v3（md5 68b446544aab500fdbc9829176db1e09）：
+    - PR02..PR19 的 _UID 改为真实 LAPIC 编号（0x08,0x09,0x10,0x11,0x18,0x19,0x20,0x21,0x28,0x29,0x30,0x32,0x34,0x36,0x38,0x3A,0x3C,0x3E）
+    - 删除 PR20..PR63 共 44 个占位处理器（避免无效启动目标/UID 冲突）
+    - 保留此前全部修复（26 门卫 NoOp + 三条改名内嵌）
+ ② APIC v2（md5 917d8b08e375394fd6519a06009a6d44）：
+    - 前 20 个启用条目的 ACPI UID 改为真实 LAPIC（0,1,8,9,…,62）；
+    - OemTableId 改为 NbkAPTB1；config 用 ACPI→Delete(APIC/'Notebook') + Add(APIC.aml) 整体替换固件 MADT。
+ 重生成脚本：dsdt-fix/make_dsdt.py（已含 v3 全部步骤，可复现）。
+ 备份：config.plist.bak-备用12-npci3000（上一版=12）。
+
+【下次启动预期】
+ · ACPI 行仍应为全绿（21 tables）；
+ · ★ AppleACPICPU 应从 3 行变成连续 20 行（LAPIC 0,1,8,9,…,62）并继续进入后续阶段
+   （PCI configuration / USB / 最终浅色安装器界面）；
+ · 若仍在第 3 行附近卡死 → 该理论不成立，转入下一轮分析（会做更深的 AP 启动路径研究）。
+================================================================
+
+
+================================================================
+【2026-10-10 14:50 —— 备用14 实测：修复生效但卡点不变 → 应变：备用15（cpus=3）】
+================================================================
+备用14 实测（照片 + 日志 143229）：
+ · 第三行变为 “ProcessorId=8 LocalApicId=8” —— 证明 DSDT v3/APIC v2 替换机制完全生效（_UID 已改）；
+ · 但卡点与之前逐字相同（仍是第 3 行之后）→ 结论修正：不是“UID 错位”问题，
+   而是“**每次都是成功启动 0、1、8 三个 CPU 后，第 4 个（LAPIC 9）起不来**”——是“第 4 步”性质的问题。
+ · 日志侧正常（MSR 35h、AppleIoMapper、CSR 0x0A43、EXITBS 正常）。
+应变（已激活）：备用15 = 备用14 + cpus=3 —— 只启动 0/1/8 三个 CPU，跳过第 4 个：
+ · 若通过 → 哪怕只有 3 核也先把 macOS 装上（CPU 数量问题留到系统内修）；
+ · 若以“xx threads but yy registered from MADT”panic → 说明校验用的是实际启动数，也是重要情报。
+备份：config.plist.bak-备用14-UID对齐（=14）；更早的 12/11/10A 等均在 调试-config。
+================================================================
+
+
+================================================================
+【2026-10-10 15:00 —— cpus=3 无效的解读 + 新方案「选择性 14 核」（备用16，已激活）】
+================================================================
+cpus=3 实测：完全无变化（同样 3 行后卡死）。解读（二选一）：
+ · cpus= 是"启动数量"上限，管不到"枚举/注册第 4 个 ACPI 处理器对象"这一步；
+   （或现代 macOS 已忽略该参数）
+ · 结合真机日志研究：正常启动在全部 CPU 行（含 LocalApicId=255 Disabled 行）之后应出现
+   IOAPIC → ACPI: System State → PFM64 → AppleIntelCPUPowerManagement → [PCI configuration begin]，
+   我们从未到达 → 确认死在“处理器枚举/注册循环、第 4 个对象处”。
+
+新方案（备用16，已上盘激活；ocvalidate 通过）：
+ · 表级跳过：DSDT 删掉 LAPIC 9 的对象 + 5 个 E 核(54/56/58/60/62)；MADT 对应 6 条置为禁用
+   （LAPIC=255、flags=0）→ 启用 14 条。
+ · 校验两侧对齐：ProvideCurrentCpuInfo=false（此前 panic 照片实证：关掉它时内核线程数=14）
+   ↔ 14 条启用 → x86_validate_topology 应 14==14 通过（避开老的 14 vs 20 panic）。
+ · 若 LAPIC 9 是元凶 → 这次应直接跑起来（14 核可用，足够安装系统）；
+   若仍在“第 4 个启用 CPU”（=LAPIC 16）卡住 → 说明是“第 4 步”位置性问题，继续换轴。
+
+回退材料：调试-config\备份-DSDT-全20核.aml / 备份-APIC-全20核.aml（配合 config.plist.bak-备用14-UID对齐）；
+新表 md5：DSDT 01e14ecf4fec23b36e3014c65ec53a11 / APIC fc6ee0be20672e9a9beeb56fd03034d9。
+================================================================
+
+
+================================================================
+【2026-10-10 15:10 ★★ 双突破 → sel14b「每核单线程 + 全 E 核」上盘】
+================================================================
+sel14a 实测照片解读（两张）：
+ ① 枚举循环通了！——首次出现全部 ~32 行处理器行（含 ProcessorId=50/60/62/20…31 的
+    “LocalApicId=255 Disabled”行），并继续走到 OSReport/bastion 新子系统。
+    → 确认此前长期卡死点 = “启用状态下的 LAPIC 9”本身（而非“第 4 个位置”）。
+ ② 新卡点 = Sequoia 内核的核心数校验：
+    panic: “Should have 14 Cores, but only found 9 for Die 0 @cpu_threads.c:1807”
+    （x86_validate_topology → cpu_topology_sort → ml_processor_register → AppleACPICPU::startSerialized）
+    → 它要求 14 个核心全部在册；sel14a 删了 5 个 E 核 + 拆了核1（只留 LAPIC8）→ 只数出 9 核，不合格。
+
+sel14b 方案（已上盘；config 不变=备用16/PCI false）：
+ · 每 P 核只留第 1 线程：LAPIC 0/8/16/24/32/40；删掉全部第二线程：1/9/17/25/33/41（表级“关超线程”）；
+ · 全部 8 个 E 核保留：48/50/52/54/56/58/60/62；
+ · 三重对齐：14 CPU ↔ 14 核心 ↔ 14 条 MADT 启用；线程数校验 14==14 ✓、核心数校验应 14==14 ✓；
+ · 且完全绕开所有第二线程（含元凶 9）。
+新表 md5：DSDT 62914324c7df65584fd3e02f38e85a53 / APIC 2663c4e843ebdb913fc0e3eaf61e7483。
+备份链（调试-config）：备份-{DSDT,APIC}-全20核.aml、备份-{DSDT,APIC}-sel14a.aml、各版 config.plist.bak-*。
+预期：处理器行 = 14 Enabled + 18 Disabled；不再出现 core-count panic；继续向后续阶段推进。
+================================================================
+
+
+================================================================
+【2026-10-10 15:25 ★ 新突破方向：Non-monotonic time panic → 备用17（补丁+CpuTscSync）】
+================================================================
+sel14b 实测：拓扑/核心数校验全部通过（无 x86_validate_topology panic），
+枚举完整、走到 AppleCredentialManager 等新子系统后出现全新 panic：
+  panic: Non-monotonic time: Invoke at 0x6f336ec2, runnable at 0x81775a85 @sched_prim.c:3242
+  thread_block_reason ← lck_mtx_sleep ← AppleACPICPU::startSerialized + 0x8cc1
+解读：时间/TSC 层面的问题——14 个 CPU（含首次被启用的 E 核与更多 P 核）的 TSC 不同步，
+调度器在互斥锁睡眠唤醒时发现“时间倒流”。社区同款标准解法（AMD/虚拟机圈）已就位：
+ ① 两条 Visual “Remove non-monotonic time panic” 内核补丁（thread_quantum_expire/thread_unblock/
+    thread_invoke/thread_dispatch；Find/Mask/Replace 已按官方字节写入；OC 日志将显示 replace count 3 与 2）；
+ ② CpuTscSync.kext（org.lvs1974.driver.CpuTscSync v1.1.3，本地 RapidEFI kext 库提取）——启动时同步各 CPU TSC（治本）。
+备用17 = 备用16 + 上述两项；ocvalidate：No issues found ✓。
+备份：config.plist.bak-备用16-选择性14核。
+观察点：14 条 Enabled；不再出 Non-monotonic panic；日志里核对补丁 replace count（3/2）与 CpuTscSync 注入成功。
+================================================================
+
+
+================================================================
+【2026-10-10 15:35 ★★★ 里程碑：macOS Sequoia 15.7.7 已安装并进入系统！！】
+================================================================
+用户照片实况：macOS Sequoia 15.7.7；
+启动磁盘 macOS（内置盘，卷标以你实际命名为准）；并已在系统内运行 OCLP-Mod 的“Intel 无线网卡”补丁（提示需重启生效）。
+→ 从“卡 AppleACPICPU 第 3 行”一路打到进桌面：CPU 表级手术（sel14b）+ TSC 补丁 + CpuTscSync 全线奏效。
+
+用户反馈两个后续问题及处理（备用18，已上盘并 ocvalidate 通过）：
+ ① 没网：OCLP-Mod 无线补丁需重启生效；且 U 盘 EFI 里 itlwm.kext 仍在启用会与补丁抢网卡
+    → 已禁用 itlwm.kext（让 OCLP 补丁独占）。后路：(a) 有线 RTL8125（kext 在）；
+    (b) 改回 itlwm + HeliPort（工具文件夹已有 HeliPort.dmg）。
+ ② 没声音：核实=EFI 从未包含 AppleALC（排障期精简所致）；DeviceProperties 里 layout-id=11 早已就位
+    （1401 对同样机型的验证值也是 11）→ 已加入 AppleALC 1.9.8（本地包）并启用。
+ 重启后一并验证；若声音仍无 → 依次试 21/31/61/71。
+备份：config.plist.bak-备用17；备用18 文件在 调试-config。
+下一步（网络声音之后）：安装 nullmoth NVIDIA 驱动（U 盘 NullMoth 文件夹含 1401 Mac 版），
+并切到驱动期设置（config-postinstall-NVIDIA.plist：ResizeAppleGpuBars=-1 / UEFI ResizeGpuBars=13 /
+IONDRVSupport 排除）。目前系统运行在 14 核（稳定优先），后续可再调。
+================================================================
+
+
+================================================================
+【2026-10-10 15:45 —— 装后三件套修复（备用19）：网络还原 + 声音换档 + 触摸板 GPI0】
+================================================================
+用户反馈：OCLP 无线方案（重启后）没网；声音仍无；触摸板不能用。
+处置（备用19，已上盘；ocvalidate 通过）：
+ ① 网络：按用户要求“还原我们的方案”——itlwm.kext 重新启用；搭配 U 盘“工具”文件夹里的 HeliPort（拖入应用程序→运行→连 Wi-Fi）。
+ ② 声音：layout-id 11 → 21（ASUS ROG ALC285 最常见值）；另备 备用19b/19c/19d = layout 61/71/31 快速轮换。
+    （诊断命令：Terminal 跑 `kextstat | grep -i alc` 与 `system_profiler SPAudioDataType`）
+ ③ 触摸板：核验 1401 的 SSDT-GPI0 正是为 \_SB.GPI0（本 DSDT L14255）所作 → 双管齐下：
+    · DSDT 内嵌 GPI0 _STA→XSTA 改名（模式 4C14145F535441 恰好 1 处，md5 e16694528d9d2e70c347a112bd0a6272）；
+    · 部署 SSDT-GPI0.aml（ACPI.Add 已加）；
+    · boot-args 追加 -vi2c-force-polling（1401 对同机型同款参数，VoodooI2C 轮询模式）。
+备份：config.plist.bak-备用18。重启后验证：HeliPort 连网 / 声音 / 触摸板。
+================================================================
+
+
+================================================================
+【2026-10-10 23:55 —— 显卡驱动已装；首个驱动启动停在 PCI configuration（已知等待点）】
+================================================================
+状态：用户已装 nullmoth 驱动（1401 Mac 版在系统内执行）。核对 U 盘配置：
+ · 1401.app 已自动切换驱动期设置 ✓：Booter.ResizeAppleGpuBars=-1、UEFI.ResizeGpuBars=13、
+   Kernel.Block IONDRVSupport Exclude=Enabled；我们的其余改动（sel14b/GPI0/AppleALC/补丁）保留。
+ · 首个驱动启动停在 “[ PCI configuration begin ] → IOPCIConfigurator::configure() PCI configuration PC00”。
+   → 官方文档：首次带驱动启动会在该点暂停最多约 1 分钟（GPU 上电初始化）；MUX 直连冷启动更慢。
+指示用户：①先对现屏等待 2-3 分钟；②重启后在该点耐心等 2-3 分钟；③进桌面后验机
+   （system_profiler SPDisplaysDataType 应见 RTX 3060）；④安全绳=OC 菜单“1401: Remove NVIDIA driver”条目
+   （自动卸载驱动并还原配置）。
+触摸板：仍不行 → 下一轮处理（I2C 控制器/GPI0 深挖），先别与驱动问题叠加改动。
+================================================================
+
+
+================================================================
+【2026-10-11 00:10 —— 驱动首启卡死 → 备用20“救援：屏蔽驱动”】
+================================================================
+现象：装 nullmoth 驱动（1401.app，自动切驱动期：BAR -1/13 + IONDRVSupport 排除）后，首次启动卡在
+     “[ PCI configuration begin ] → configure() PCI configuration PC00”，等待无果。
+研判：卡点在驱动接管 GPU（GSP/PCI 初始化）或显示交接窗口；屏死≠系统必死，但需先能进桌面排查。
+救援方案（备用20，已激活；ocvalidate 通过）：保留全部现场（驱动文件不删、AuxKC 不动），仅从引导层处理：
+ ① Kernel→Block 新增排除 4 个驱动 kext（bundle id 已从 U 盘 pkgroot 读出）：
+    com.nullmoth.NVRM / com.nullmoth.NVAccel / com.nullmoth.NVRMFB / com.nullmoth.NVRMAGDC；
+ ② IONDRVSupport 排除 → 关闭（固件帧缓冲重新驱动显示）；
+ ③ 显示设置还原“驱动前”已知可用组合：Booter.ResizeAppleGpuBars=0、UEFI.ResizeGpuBars=-1。
+ → 预期：像装驱动前一样进入桌面；驱动留在系统里（/Library/Extensions + /Library/NullMoth + nvfw 固件均在）。
+备份：调试-config\config.plist.bak-驱动期1401修改后（1401 改过的驱动期配置）。
+进桌面后排查命令：ls /Library/Extensions | grep -i nv; ls /Users/Shared/nvfw/nvidia/610.57.04/;
+                    kmutil showloaded --list-only | grep -i nullmoth
+后续：驱动开关×显示设置×BAR 组合的小矩阵试验（含“首次启动耐心等待 5 分钟”候选），确定可用组合后放开 Block。
+================================================================
+
+
+================================================================
+【2026-10-11 00:30 ★★ GitHub 找到答案：不是卡死，是 NVRM 的“盲等”+核显等待】
+================================================================
+来源：nullmoth 仓库 Issue #23（含源码引用）与 #35/#70：
+ · kexts/NVRM/NVRM.cpp:324 —— `fAutoGoSettleMs = bar1Placed ? 500 : 100000;`
+   → 若 BAR1 未能放成大 BAR（笔记本 GA10x VBIOS 常只报 64/128/256MB，同款案例 RTX 3080），
+     驱动在加载 GSP 固件前【先盲等 100 秒】，期间系统被 boot-hold 住——屏幕看起来“卡死”。
+ · 叠加项：无驱动核显（我们的 Iris Xe）会让 IOGraphicsFamily 等 ~60 秒（Issue #35：-wegnoigpu 91s→27s）。
+ · 合计可能 2~3 分钟——此前等的时间很可能不够。
+ · Issue #70 为同族病例（笔记本 + 1401 装完进不去 + 无日志）；其配置使用 nvrmsettle=10000。
+处置（备用21，已激活；ocvalidate 通过）：
+ ① 解除 4 个 nullmoth kext 的 Block（驱动恢复加载）；
+ ② IONDRVSupport 排除恢复启用（驱动期标准）；
+ ③ BAR 回驱动期（Booter -1 / UEFI 13）；
+ ④ boot-args += `nvrmsettle=10000`（100s→10s）与 `-wegnoigpu`；
+ ⑤ 加入 WhateverGreen 1.7.2（1401 原版，其 EFI 本就带 WEG）。
+重启要求：即使优化后首次启动仍可能在该行停 20~90 秒 —— 至少等满 5 分钟再判断！！
+成功判据：进桌面后 system_profiler SPDisplaysDataType 应见 RTX 3060。
+失败后路：调试-config\备用20-救援-屏蔽驱动.plist 换回即可恢复可进桌面状态。
+================================================================

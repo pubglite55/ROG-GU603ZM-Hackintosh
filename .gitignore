@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+.Spotlight-V100
+.TemporaryItems
+._*
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# 临时/编辑文件
+*.bak
+*.tmp
+*~
+
+# 大型二进制工具（不进仓库，如需可从各自上游获取）
+工具/
+参考资料/macrecovery/
