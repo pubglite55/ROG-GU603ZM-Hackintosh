@@ -1,5 +1,11 @@
 # ROG Zephyrus M16 (GU603ZM) OpenCore EFI — macOS Sequoia 15 × NVIDIA
 
+<p align="center">
+  <a href="https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/pubglite55/ROG-GU603ZM-Hackintosh?style=flat-square&label=Stars"></a>
+  <a href="https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/commits/master"><img alt="Last Commit" src="https://img.shields.io/github/last-commit/pubglite55/ROG-GU603ZM-Hackintosh?style=flat-square&label=Last%20Commit"></a>
+  <a href="https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/github/license/pubglite55/ROG-GU603ZM-Hackintosh?style=flat-square&label=License"></a>
+</p>
+
 **English** | [简体中文](README.zh-CN.md)
 
 > [📦 Download latest EFI](https://github.com/pubglite55/ROG-GU603ZM-Hackintosh/releases/latest) · [Install guide](INSTALL.md) · [Changelog](CHANGELOG.md) · [Contributing](CONTRIBUTING.md)
