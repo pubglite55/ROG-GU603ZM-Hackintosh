@@ -70,6 +70,15 @@
 
 ---
 
+## 2.5 启动界面主题
+
+本 EFI 已内置 **GoldenGate 图形主题**（OpenCanopy + `Resources/`）。如想换回纯文本界面：
+- 删除 `EFI/OC/Drivers/OpenCanopy.efi`；
+- `Misc → Boot → PickerMode` 改回 `Builtin`。
+如需其他主题（Chardonnay/Syrah 已一并放在 `Resources/Image/Acidanthera/`），改 `PickerVariant` 即可。
+
+---
+
 ## 3. 其他驱动要点
 
 ### 3.1 音频（ALC285，调优中）
@@ -109,15 +118,19 @@ EFI-GU603ZM-Sequoia-OC1.0.8/
 │  └─ OC/
 │     ├─ OpenCore.efi                  # OpenCore 1.0.8
 │     ├─ config.plist                  # ★ 当前生效配置（安装+装后通用）
-│     ├─ config-postinstall-NVIDIA.plist  # 装驱动后可选替换（BAR 微调）
 │     ├─ ACPI/                          # SSDT + 原厂表替换（见 §5）
-│     ├─ Drivers/                       # OpenRuntime / OpenHfsPlus / ResetNvramEntry
+│     ├─ Drivers/                       # OpenRuntime / OpenHfsPlus / ResetNvramEntry / OpenCanopy
 │     ├─ Kexts/                         # 21 个驱动（见 §7）
+│     ├─ Resources/                     # GoldenGate 图形主题 + 字体 + 标签
 │     └─ Tools/
-├─ 工具/                               # USBToolBox / HeliPort.dmg / macrecovery
 ├─ 参考资料/                            # SSDT 源码 / SSDTTime 补丁 / 版本记录
 └─ 调试-config/                         # 各类备用/救援/声卡 layout 变体（见该目录说明）
 ```
+
+> 注：`工具/`（HeliPort.dmg、USBToolBox-Windows.zip、macrecovery）因体积/版权未入仓库，从各自上游获取：
+> - HeliPort：https://github.com/OpenIntelWireless/HeliPort/releases
+> - USBToolBox：https://github.com/USBToolBox/tool/releases
+> - macrecovery：https://github.com/acidanthera/OpenCorePkg（`Utilities/macrecovery`）
 
 ---
 
