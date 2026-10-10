@@ -42,6 +42,12 @@
 
 ## 2. NVIDIA dGPU Solution (core)
 
+### 2.0 Proof it works
+
+The 1401 driver installer reporting **"NullMoth components are loaded and an NVIDIA Metal device is visible"** on this machine (RTX 3060 Laptop, macOS 15.7.7):
+
+![nullmoth driver working on GU603ZM](docs/nullmoth-driver-working.jpg)
+
 ### 2.1 The nullmoth driver
 
 [nullmoth/nvidia-macos-driver](https://github.com/nullmoth/nvidia-macos-driver) is a community open-source driver released 2026-10-08:

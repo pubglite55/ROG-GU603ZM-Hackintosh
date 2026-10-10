@@ -42,6 +42,12 @@
 
 ## 2. NVIDIA 独显方案（核心）
 
+### 2.0 实机演示
+
+1401 驱动安装器在本机上报告 **"NullMoth components are loaded and an NVIDIA Metal device is visible"**（RTX 3060 Laptop，macOS 15.7.7）：
+
+![nullmoth 驱动在 GU603ZM 上运行](docs/nullmoth-driver-working.jpg)
+
 ### 2.1 nullmoth 驱动
 
 [nullmoth/nvidia-macos-driver](https://github.com/nullmoth/nvidia-macos-driver) 是 2026-10-08 发布的社区开源驱动：
